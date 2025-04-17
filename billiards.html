@@ -4,6 +4,13 @@
   <meta charset="UTF-8">
   <title>Billiard Tournament</title>
   <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+  <style>
+    @font-face {
+      font-family: 'OrbitronCanvas';
+      src: url('https://fonts.gstatic.com/s/orbitron/v28/yMJRMIlzdpvBhQQL_SC3X9yhF30.woff2') format('woff2');
+    }
+  </style>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
   <style>
     body {
@@ -88,35 +95,46 @@
       max-width: 100%;
       border-radius: 8px;
     }
+    .section, .game {
+      transition: all 0.3s ease-in-out;
+      opacity: 1;
+    }
+    .hall-of-fame h2 {
+      color: gold;
+      text-shadow: 2px 2px 10px #ff0;
+    }
+    [v-cloak] {
+      display: none;
+    }
   </style>
 </head>
 <body>
   <div id="app" class="container">
     <h1>🎱 Billiard Tournament 🎱</h1>
 
-    <div>
+    <div v-if="phase === 'setup'">
       <input v-model="newPlayer" placeholder="Add player name" @keyup.enter="addPlayer">
       <button @click="addPlayer">Add Player</button>
     </div>
 
-    <div>
+    <div v-if="phase === 'setup'">
       <label>Games per match-up:</label>
       <input type="number" v-model.number="matchRepeat" min="1">
     </div>
 
-    <div class="section player-list">
+    <div class="section player-list" v-if="phase === 'setup'">
       <h2>Players</h2>
       <ul>
         <li v-for="(player, index) in players" :key="index">🎯 {{ player }}</li>
       </ul>
     </div>
 
-    <div>
+    <div v-if="phase === 'setup'">
       <button @click="startTournament" :disabled="players.length < 4">Start Tournament</button>
     </div>
 
-    <div class="section game-list">
-      <h2>Round-Robin Games</h2>
+    <div class="section game-list" v-if="isPhaseVisible('round-robin')">
+      <h2 id="round-robin">Round-Robin Games</h2>
       <div class="game" v-for="(game, index) in games" :key="index">
         {{ game[0] }} vs {{ game[1] }}<br>
         <button @click="markWinner(index, game[0])">{{ game[0] }}</button>
@@ -134,8 +152,8 @@
       </div>
     </div>
 
-    <div class="section">
-      <h2>🥇 Semi Finals</h2>
+    <div class="section" v-if="isPhaseVisible('semifinals')">
+      <h2 id="semifinals">🥇 Semi Finals</h2>
       <div class="game" v-for="(game, index) in semifinals" :key="index">
         {{ game[0] }} vs {{ game[1] }}<br>
         <button @click="markSemiWinner(index, game[0])">{{ game[0] }}</button>
@@ -144,13 +162,21 @@
       </div>
     </div>
 
-    <div class="section">
-      <h2>🏆 Final</h2>
+    <div class="section" v-if="isPhaseVisible('final')">
+      <h2 id="final">🏆 Final</h2>
       <div class="game" v-if="final.length">
         {{ final[0] }} vs {{ final[1] }}<br>
         <button @click="markFinalWinner(final[0])">{{ final[0] }}</button>
         <button @click="markFinalWinner(final[1])">{{ final[1] }}</button>
         <span v-if="finalWinner" class="winner">🎉 Winner: {{ finalWinner }}</span>
+      </div>
+    </div>
+
+    <div class="section hall-of-fame" v-if="champions.length">
+      <h2 id="halloffame">🏅 Hall of Fame</h2>
+      <div v-for="(champion, index) in champions" :key="index" style="margin-bottom: 20px;">
+        <h3>{{ champion.name }} - {{ champion.date }}</h3>
+        <img :src="champion.image" style="max-width: 100%; border-radius: 12px; box-shadow: 0 0 10px #000;">
       </div>
     </div>
 
@@ -164,13 +190,16 @@
       </div>
     </div>
   </div>
+  <canvas id="confetti-canvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2000;"></canvas>
 
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
   <script>
     new Vue({
       el: '#app',
       data: {
         newPlayer: '',
         players: [],
+        champions: [],
         matchRepeat: 1,
         games: [],
         winners: {},
@@ -179,7 +208,25 @@
         final: [],
         finalWinner: '',
         phase: 'setup',
-        showCamera: false
+        showCamera: false,
+        phaseLabels: {
+          setup: '🔧 Setup',
+          'round-robin': '🎯 Round-Robin Matches',
+          semifinals: '🥇 Semi Finals',
+          final: '🏆 Final',
+          done: '🎉 Champion Crowned!'
+        },
+        phaseOrder: ['setup', 'round-robin', 'semifinals', 'final', 'done', 'halloffame']
+      },
+      watch: {
+        phase(newPhase) {
+          this.$nextTick(() => {
+            const el = document.getElementById(newPhase);
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth' });
+            }
+          });
+        }
       },
       computed: {
         playerStats() {
@@ -196,9 +243,19 @@
         },
         sortedStats() {
           return Object.values(this.playerStats).sort((a, b) => b.wins - a.wins);
+        },
+        phaseLabel() {
+          return this.phaseLabels[this.phase];
+        },
+        phaseProgress() {
+          const order = ['setup', 'round-robin', 'semifinals', 'final', 'done', 'halloffame'];
+          return order.indexOf(this.phase);
         }
       },
       methods: {
+        isPhaseVisible(targetPhase) {
+          return this.phaseOrder.indexOf(this.phase) >= this.phaseOrder.indexOf(targetPhase);
+        },
         addPlayer() {
           if (this.newPlayer.trim()) {
             this.players.push(this.newPlayer.trim());
@@ -246,6 +303,8 @@
         },
         markFinalWinner(winner) {
           this.finalWinner = winner;
+          this.phase = 'done';
+          this.launchConfetti();
           this.openCamera();
         },
         openCamera() {
@@ -267,11 +326,46 @@
         takePicture() {
           const canvas = this.$refs.canvas;
           const video = this.$refs.video;
+          const context = canvas.getContext('2d');
+
+          // Set canvas size to match video
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
-          canvas.getContext('2d').drawImage(video, 0, 0);
+
+          // Draw video frame
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          // Add confetti on the snapshot
+          this.drawConfettiShapes(context, canvas.width, canvas.height);
+
+          // Text settings
+          context.font = '48px OrbitronCanvas';
+          context.fillStyle = '#ffff66';
+          context.textAlign = 'center';
+          context.textBaseline = 'top';
+
+          // Add winner name at the top
+          context.fillText(`🏆 ${this.finalWinner} 🏆`, canvas.width / 2, 20);
+
+          // Add current date at the bottom
+          const date = new Date().toLocaleDateString();
+          context.textBaseline = 'bottom';
+          context.fillText(`🎉 ${date}`, canvas.width / 2, canvas.height - 20);
+
+          // Convert canvas to image and download
           const image = canvas.toDataURL('image/png');
-          console.log('Captured image:', image); // You can handle image as needed
+          
+          this.champions.push({
+            name: this.finalWinner,
+            date: date,
+            image: image
+          });
+
+          this.showCamera = false;
+
+          this.$nextTick(function() {
+            this.phase = 'halloffame';
+          });
         },
         shuffleArray(array) {
           let currentIndex = array.length, randomIndex;
@@ -281,6 +375,30 @@
             [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
           }
           return array;
+        },
+        launchConfetti() {
+          const myCanvas = document.getElementById('confetti-canvas');
+          const myConfetti = confetti.create(myCanvas, { resize: true, useWorker: true });
+
+          myConfetti({
+            particleCount: 150,
+            spread: 100,
+            origin: { y: 0.6 }
+          });
+        },
+        drawConfettiShapes(context, canvasWidth, canvasHeight) {
+          const colors = ['#ff0', '#0ff', '#f0f', '#0f0', '#f00', '#00f'];
+          for (let i = 0; i < 100; i++) {
+            const x = Math.random() * canvasWidth;
+            const y = Math.random() * canvasHeight;
+            const size = Math.random() * 8 + 4;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            context.fillStyle = color;
+            context.beginPath();
+            context.arc(x, y, size / 2, 0, 2 * Math.PI);
+            context.fill();
+          }
         }
       }
     });
