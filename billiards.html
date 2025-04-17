@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Billiard Tournament</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Orbitron', sans-serif;
+      background-color: #003300;
+      color: #ffffff;
+      text-align: center;
+      padding: 30px;
+    }
+    h1 {
+      color: #00ff00;
+      text-shadow: 2px 2px #000;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #004d00;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 15px #00000088;
+    }
+    input, button {
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      margin: 5px;
+      font-size: 16px;
+    }
+    input[type="text"], input[type="number"] {
+      width: 200px;
+    }
+    button {
+      background-color: #00cc00;
+      color: #fff;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #009900;
+    }
+    .section {
+      margin-top: 30px;
+    }
+    .game {
+      margin: 10px 0;
+      padding: 10px;
+      background-color: #006600;
+      border-radius: 8px;
+    }
+    .winner {
+      display: block;
+      margin-top: 10px;
+      color: #ffff66;
+      font-weight: bold;
+    }
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+    li {
+      padding: 4px 0;
+    }
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background-color: #004d00;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+    }
+    video, canvas {
+      max-width: 100%;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="container">
+    <h1>🎱 Billiard Tournament 🎱</h1>
+
+    <div>
+      <input v-model="newPlayer" placeholder="Add player name" @keyup.enter="addPlayer">
+      <button @click="addPlayer">Add Player</button>
+    </div>
+
+    <div>
+      <label>Games per match-up:</label>
+      <input type="number" v-model.number="matchRepeat" min="1">
+    </div>
+
+    <div class="section player-list">
+      <h2>Players</h2>
+      <ul>
+        <li v-for="(player, index) in players" :key="index">🎯 {{ player }}</li>
+      </ul>
+    </div>
+
+    <div>
+      <button @click="startTournament" :disabled="players.length < 4">Start Tournament</button>
+    </div>
+
+    <div class="section game-list">
+      <h2>Round-Robin Games</h2>
+      <div class="game" v-for="(game, index) in games" :key="index">
+        {{ game[0] }} vs {{ game[1] }}<br>
+        <button @click="markWinner(index, game[0])">{{ game[0] }}</button>
+        <button @click="markWinner(index, game[1])">{{ game[1] }}</button>
+        <span v-if="winners[index]" class="winner">🏆 Winner: {{ winners[index] }}</span>
+      </div>
+
+      <div v-if="Object.keys(winners).length">
+        <h3>🏅 Player Stats</h3>
+        <ul>
+          <li v-for="(player, index) in sortedStats" :key="index">
+            {{ player.name }} - Wins: {{ player.wins }}, Losses: {{ player.losses }}
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>🥇 Semi Finals</h2>
+      <div class="game" v-for="(game, index) in semifinals" :key="index">
+        {{ game[0] }} vs {{ game[1] }}<br>
+        <button @click="markSemiWinner(index, game[0])">{{ game[0] }}</button>
+        <button @click="markSemiWinner(index, game[1])">{{ game[1] }}</button>
+        <span v-if="semiWinners[index]" class="winner">🏆 Winner: {{ semiWinners[index] }}</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>🏆 Final</h2>
+      <div class="game" v-if="final.length">
+        {{ final[0] }} vs {{ final[1] }}<br>
+        <button @click="markFinalWinner(final[0])">{{ final[0] }}</button>
+        <button @click="markFinalWinner(final[1])">{{ final[1] }}</button>
+        <span v-if="finalWinner" class="winner">🎉 Winner: {{ finalWinner }}</span>
+      </div>
+    </div>
+
+    <div class="modal" v-if="showCamera">
+      <div class="modal-content">
+        <h2>📸 Take a picture of the champion!</h2>
+        <video ref="video" autoplay></video><br>
+        <button @click="takePicture">📷 Capture</button>
+        <canvas ref="canvas" style="display:none;"></canvas><br>
+        <button @click="closeCamera">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    new Vue({
+      el: '#app',
+      data: {
+        newPlayer: '',
+        players: [],
+        matchRepeat: 1,
+        games: [],
+        winners: {},
+        semifinals: [],
+        semiWinners: {},
+        final: [],
+        finalWinner: '',
+        phase: 'setup',
+        showCamera: false
+      },
+      computed: {
+        playerStats() {
+          const stats = {};
+          this.players.forEach(p => stats[p] = { name: p, wins: 0, losses: 0 });
+          for (let i in this.winners) {
+            const game = this.games[i];
+            const winner = this.winners[i];
+            const loser = game[0] === winner ? game[1] : game[0];
+            stats[winner].wins++;
+            stats[loser].losses++;
+          }
+          return stats;
+        },
+        sortedStats() {
+          return Object.values(this.playerStats).sort((a, b) => b.wins - a.wins);
+        }
+      },
+      methods: {
+        addPlayer() {
+          if (this.newPlayer.trim()) {
+            this.players.push(this.newPlayer.trim());
+            this.newPlayer = '';
+          }
+        },
+        startTournament() {
+          this.players = this.shuffleArray(this.players);
+          this.games = [];
+          for (let i = 0; i < this.players.length; i++) {
+            for (let j = i + 1; j < this.players.length; j++) {
+              for (let k = 0; k < this.matchRepeat; k++) {
+                this.games.push([this.players[i], this.players[j]]);
+              }
+            }
+          }
+          this.phase = 'round-robin';
+        },
+        markWinner(gameIndex, winner) {
+          this.$set(this.winners, gameIndex, winner);
+          if (Object.keys(this.winners).length === this.games.length) {
+            this.prepareSemiFinals();
+          }
+        },
+        prepareSemiFinals() {
+          const scoreMap = {};
+          this.players.forEach(p => scoreMap[p] = 0);
+          Object.values(this.winners).forEach(winner => scoreMap[winner]++);
+          const sorted = Object.entries(scoreMap).sort((a, b) => b[1] - a[1]);
+          this.semifinals = [
+            [sorted[0][0], sorted[3][0]],
+            [sorted[1][0], sorted[2][0]]
+          ];
+          this.phase = 'semifinals';
+        },
+        markSemiWinner(index, winner) {
+          this.$set(this.semiWinners, index, winner);
+          if (Object.keys(this.semiWinners).length === 2) {
+            this.prepareFinal();
+          }
+        },
+        prepareFinal() {
+          this.final = [this.semiWinners[0], this.semiWinners[1]];
+          this.phase = 'final';
+        },
+        markFinalWinner(winner) {
+          this.finalWinner = winner;
+          this.openCamera();
+        },
+        openCamera() {
+          this.showCamera = true;
+          navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+              this.$refs.video.srcObject = stream;
+            });
+        },
+        closeCamera() {
+          const video = this.$refs.video;
+          const stream = video.srcObject;
+          if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+          }
+          video.srcObject = null;
+          this.showCamera = false;
+        },
+        takePicture() {
+          const canvas = this.$refs.canvas;
+          const video = this.$refs.video;
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          canvas.getContext('2d').drawImage(video, 0, 0);
+          const image = canvas.toDataURL('image/png');
+          console.log('Captured image:', image); // You can handle image as needed
+        },
+        shuffleArray(array) {
+          let currentIndex = array.length, randomIndex;
+          while (currentIndex !== 0) {
+            randomIndex = Math.floor(Math.random() * currentIndex);
+            currentIndex--;
+            [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+          }
+          return array;
+        }
+      }
+    });
+  </script>
+</body>
+</html>
