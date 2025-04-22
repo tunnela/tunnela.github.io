@@ -1,0 +1,4 @@
+[submodule "Billiards Tournament Management App"]
+    path = billiards
+    url = https://github.com/tunnela/billiards-tournament-management-app.git
+    branch = main
