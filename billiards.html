@@ -130,7 +130,7 @@
     </div>
 
     <div v-if="phase === 'setup'">
-      <button @click="startTournament" :disabled="players.length < 4">Start Tournament</button>
+      <button @click="startTournament" :disabled="players.length < 2">Start Tournament</button>
     </div>
 
     <div class="section game-list" v-if="isPhaseVisible('round-robin')">
@@ -284,12 +284,27 @@
           const scoreMap = {};
           this.players.forEach(p => scoreMap[p] = 0);
           Object.values(this.winners).forEach(winner => scoreMap[winner]++);
-          const sorted = Object.entries(scoreMap).sort((a, b) => b[1] - a[1]);
-          this.semifinals = [
-            [sorted[0][0], sorted[3][0]],
-            [sorted[1][0], sorted[2][0]]
-          ];
-          this.phase = 'semifinals';
+
+          const sorted = Object.entries(scoreMap).sort((a, b) => b[1] - a[1]).map(entry => entry[0]);
+
+          if (sorted.length === 2) {
+            // Only 2 players — skip to final
+            this.final = [sorted[0], sorted[1]];
+            this.phase = 'final';
+          } else if (sorted.length === 3) {
+            // Top 2 go to final
+            this.final = [sorted[0], sorted[1]];
+            this.phase = 'final';
+          } else if (sorted.length >= 4) {
+            // Semifinals with top 4
+            this.semifinals = [
+              [sorted[0], sorted[3]],
+              [sorted[1], sorted[2]]
+            ];
+            this.phase = 'semifinals';
+          } else {
+            alert('Not enough players to continue the tournament.');
+          }
         },
         markSemiWinner(index, winner) {
           this.$set(this.semiWinners, index, winner);
